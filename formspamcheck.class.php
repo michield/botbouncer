@@ -113,6 +113,10 @@ class FormSpamCheck {
     if (empty($this->logRoot)) return;
     if (!$this->logActivity) return;
     $logFile = basename($logFile,'.log');
+    if (!is_writable($this->logRoot'/'.$logFile.date('Y-m-d').'.log')) {
+      $this->dbg('cannot write logfile');
+      return;
+    }
     $ip = isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : ' - ';
     $logEntry = date('Y-m-d H:i:s').' '.$ip.' '.$entry;
     file_put_contents($this->logRoot.'/'.$logFile.date('Y-m-d').'.log',$logEntry."\n",FILE_APPEND);
