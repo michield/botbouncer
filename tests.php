@@ -2,7 +2,7 @@
 
 ## some tests on the formspamcheck class
 
-require dirname(__FILE__).'/../config.php';
+@include 'config.php';
 require 'formspamcheck.class.php';
 
 ## fetch some obvious spam from eg http://programmermeetdesigner.com/blog/view/techstars_ceo__project_posting_and_the_pmd_difference_/#comments
@@ -30,8 +30,15 @@ I think this story helps illustrate the difference between PMD and all of the ot
 
 );
 
-$fsc = new FormSpamCheck();
+$minimalham = array (
+  'ips' => array('77.240.14.92'),
+  'username' => 'HelloWorld',
+  'email' => 'phplist@gmail.com',
+);
 
+
+$fsc = new FormSpamCheck();
+$fsc->setDebug(false);
 print "SFS\n";
 if ($fsc->stopForumSpamCheck($spam)) {
   print "SPAM\n";
@@ -40,7 +47,7 @@ if ($fsc->stopForumSpamCheck($spam)) {
 }
 #var_dump($fsc->matchDetails);
 
-if ($fsc->stopForumSpamCheck($ham)) {
+if ($fsc->stopForumSpamCheck($minimalham)) {
   print "SPAM\n";
 } else {
   print "HAM\n";
@@ -53,7 +60,7 @@ if ($fsc->akismetCheck($spam)) {
 } else {
   print "HAM\n";
 }
-if ($fsc->akismetCheck($ham)) {
+if ($fsc->akismetCheck($minimalham)) {
   print "SPAM\n";
 } else {
   print "HAM\n";
@@ -64,9 +71,24 @@ if ($fsc->honeypotcheck($spam['ips'][0])) {
 } else {
   print "HAM\n";
 }
-if ($fsc->honeypotcheck($ham['ips'][0])) {
+if ($fsc->honeypotcheck($minimalham['ips'][0])) {
   print "SPAM\n";
 } else {
   print "HAM\n";
 }
+print 'Generic'."\n";
+if ($fsc->isSpam($spam)) {
+  print "SPAM\n";
+  print $fsc->matchedBy."\n";
+} else {
+  print "HAM\n";
+}
+
+if ($fsc->isSpam($minimalham)) {
+  print "SPAM\n";
+  print $fsc->matchedBy."\n";
+} else {
+  print "HAM\n";
+}
+
 

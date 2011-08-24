@@ -31,13 +31,15 @@ class FormSpamCheck {
   private $akismetBlogURL = 'http://www.phplist.com';
   private $memCached = false;
   private $hpCheck = false;
-  private $akismetCheck = false;
+  private $akismetEnabled = false;
   private $logRoot = '/var/log';
   private $logActivity = true;
+  private $debug = false;
   private $UA = 'FormSpamCheck class (v.0.0.1)';
   // The StopFormSpam API URL
   private $stopSpamAPIUrl = 'http://www.stopforumspam.com/api';
   public $matchDetails = '';
+  public $matchedBy = '';
   private $sfsSpamTriggers = array ( ## set a default, in case it's not in config
     'username' => array ( 
       'ban_end' => FALSE, 
@@ -69,6 +71,10 @@ class FormSpamCheck {
       'comment_content'
   );
 
+  function setDebug($setting) {
+    $this->debug = (bool)$setting;
+  }
+
   function FormSpamCheck() {
     if (!function_exists('curl_init')) {
       print 'curl dependency error';
@@ -82,7 +88,7 @@ class FormSpamCheck {
     if (!empty($GLOBALS['akismetApiKey'])) {
       $this->akismetApiKey = $GLOBALS['akismetApiKey'];
      # $this->dbg('Set key '.$GLOBALS['akismetApiKey']);
-      $this->akismetCheck = true;
+      $this->akismetEnabled = true;
     }
     if (!empty($GLOBALS['akismetBlogURL'])) {
       $this->akismetBlogURL = $GLOBALS['akismetBlogURL'];
@@ -106,6 +112,7 @@ class FormSpamCheck {
   }
 
   function dbg($msg) {
+    if (!$this->debug) return;
     print $msg."\n";
   }
 
@@ -113,8 +120,8 @@ class FormSpamCheck {
     if (empty($this->logRoot)) return;
     if (!$this->logActivity) return;
     $logFile = basename($logFile,'.log');
-    if (!is_writable($this->logRoot.'/'.$logFile.date('Y-m-d').'.log')) {
-      $this->dbg('cannot write logfile');
+    if (!is_writable($this->logRoot)) {
+      $this->dbg('cannot write logfile '.$this->logRoot.'/'.$logFile.date('Y-m-d').'.log');
       return;
     }
     $ip = isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : ' - ';
@@ -136,6 +143,15 @@ class FormSpamCheck {
     return $this->memCached->set($key,$val,$expiry);
   }
 
+  function defaults($item) {
+    switch ($item) {
+      case 'ip': return $_SERVER['REMOTE_ADDR'];
+      case 'email': return '';
+      case 'username': return 'Anonymous';
+      default: return '';
+    }
+  }
+
   function honeypotCheck($ip) {
      if (!$this->hpCheck) return;
 
@@ -144,10 +160,11 @@ class FormSpamCheck {
     $lookup = $GLOBALS['honeyPotApiKey'].'.'.implode('.', $rev) . '.dnsbl.httpbl.org';
 
     $rev = gethostbyname($lookup);
-    $this->addLogEntry('honeypotresult.log',$lookup.' '.$rev);
     if ($lookup != $rev) {
+      $this->addLogEntry('honeypot.log','SPAM '.$lookup.' '.$rev);
       return true;
     } else {
+      $this->addLogEntry('honeypot.log','HAM '.$lookup.' '.$rev);
       return false;
     }
   }
@@ -155,7 +172,7 @@ class FormSpamCheck {
   // Authenticates your Akismet API key
   function akismet_verify_key() {
     if (empty($this->akismetApiKey)) {
-      $this->dbg('No Key');
+      $this->dbg('No Akismet API Key');
       return false;
     }
     $cached = $this->getCache('akismetKeyValid');
@@ -179,13 +196,14 @@ class FormSpamCheck {
 
   // Passes back true (it's spam) or false (it's ham)
   function akismetCheck($data) {
+    if (!$this->akismetEnabled) return false;
     if (!$this->akismet_verify_key()) return false;
 
     ## set some values the way akismet expects them
-    $data['user_ip'] = $data['ips'][0]; ## akismet only handles one IP, so take the first
-    $data['comment_author'] = $data['username'];
-    $data['comment_author_email'] = $data['email'];
-    $data['comment_content'] = $data['content'];
+    $data['user_ip'] = !empty($data['ips'][0]) ? $data['ips'][0]: $this->defaults('ip'); ## akismet only handles one IP, so take the first
+    $data['comment_author'] = !empty($data['username']) ? $data['username'] : $this->defaults('username');
+    $data['comment_author_email'] = !empty($data['email']) ? $data['email'] : $this->defaults('email');
+    $data['comment_content'] = !empty($data['content']) ? $data['content'] : $this->defaults('content');
         
     foreach ($this->akismetFields as $field) {
       if (!isset($data[$field])) {
@@ -208,13 +226,18 @@ class FormSpamCheck {
     $cached = $this->getCache('akismet'.md5(serialize($data)));
     if (!empty($cached)) {
       $isSpam = $cached;
+      $data['fromcache'] = '(cached)'; // for logging
     } else {
       $isSpam = $this->doPOST('http://'.$this->akismetApiKey.'.rest.akismet.com/1.1/comment-check',$data);
       $this->setCache('akismet'.md5(serialize($data)),$isSpam);
+      $data['fromcache'] = '';
     }
+
     if ( 'true' == $isSpam ) {
+      $this->addLogEntry('akismet.log',$data['fromcache'].' SPAM '.$data['username'].' '.$data['email'].' '.join(',',$data['ips']));
       return true;
     } else {
+      $this->addLogEntry('akismet.log',$data['fromcache'].' HAM '.$data['username'].' '.$data['email'].' '.join(',',$data['ips']));
       return false;
     }
   }
@@ -273,8 +296,6 @@ class FormSpamCheck {
   }
 
   function stopForumSpamCheck($data = array()) {
-
-#  function checkForSpam($user_name = '',$user_ips = array(),$user_email = '') {
     if (!sizeof($data['ips'])) {
       $data['ips'][] = $_SERVER['REMOTE_ADDR'];
       if (isset($_SERVER['HTTP_X_FORWARDED_FOR'])) {
@@ -283,9 +304,6 @@ class FormSpamCheck {
     }
     
     $isSfsSpam = false;
-    $logSpamPath = $_SERVER['DOCUMENT_ROOT'].'/store/spammers'.date('Y-m-d').'.log';
-    $logHamPath = $_SERVER['DOCUMENT_ROOT'].'/store/nonspammers'.date('Y-m-d').'.log';
-    $logAPICallPath = $_SERVER['DOCUMENT_ROOT'].'/store/ban-apicall'.date('Y-m-d').'.log';
 
     $spamTriggers = $this->sfsSpamTriggers;
     if (empty($data['username'])) {
@@ -328,8 +346,10 @@ class FormSpamCheck {
         return false;
       }
       $this->setCache('SFS'.$apiRequest,$xml);
+      $cached = ''; // for logging
     } else {
       $xml = $cached;
+      $cached = '(cached)'; // for logging
     }
     ## the resulting XML is an 
     $response = simplexml_load_string($xml);
@@ -361,7 +381,33 @@ class FormSpamCheck {
     }
     # var_dump($spamMatched);
     $this->matchDetails = $spamMatched;
+    if ($isSfsSpam) {
+      $this->addLogEntry('sfs.log',$cached.' SPAM '.$data['username'].' '.$data['email'].' '.join(',',$data['ips']));
+    } else {
+      $this->addLogEntry('sfs.log',$cached.' HAM '.$data['username'].' '.$data['email'].' '.join(',',$data['ips']));
+    }
     return $isSfsSpam;
+  }
+
+  function isSpam($data) {
+    ## honeypot will be fastest
+    if ($this->hpCheck && !empty($data['ips'])) {
+      foreach ($data['ips'] as $ip) {
+        if ($this->honeypotCheck($ip)) {
+          $this->matchedBy = 'Honeypot Project';
+          return true;
+        }
+      }
+    }
+    if ($this->stopForumSpamCheck($data)) {
+      $this->matchedBy = 'Stop Forum Spam';
+      return true;
+    }
+    if ($this->akismetEnabled && $this->akismetCheck($data)) {
+      $this->matchedBy = 'Akismet';
+      return true;
+    }
+    return false;
   }
 
 } // eo class
