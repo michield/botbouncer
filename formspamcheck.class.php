@@ -16,6 +16,9 @@
  *
  * It currently uses three services, stopforumspam.com, project honeypot and akismet
  * If you know of any other services that can be integrated, let me know.
+ *
+ * Credits: Loosely based on the original phpBB mode from "microUgly"
+ * http://www.phpbb.com/community/viewtopic.php?f=70&t=1349145
  * 
  * 
  */
