@@ -113,7 +113,7 @@ class FormSpamCheck {
     if (empty($this->logRoot)) return;
     if (!$this->logActivity) return;
     $logFile = basename($logFile,'.log');
-    if (!is_writable($this->logRoot'/'.$logFile.date('Y-m-d').'.log')) {
+    if (!is_writable($this->logRoot.'/'.$logFile.date('Y-m-d').'.log')) {
       $this->dbg('cannot write logfile');
       return;
     }
