@@ -17,7 +17,7 @@
  * It currently uses three services, stopforumspam.com, project honeypot and akismet
  * If you know of any other services that can be integrated, let me know.
  *
- * Credits: Loosely based on the original phpBB mode from "microUgly"
+ * Credits: Very loosely based on the original phpBB mod from "microUgly"
  * http://www.phpbb.com/community/viewtopic.php?f=70&t=1349145
  * 
  * 
@@ -32,7 +32,7 @@ class FormSpamCheck {
   private $memCached = false;
   private $hpCheck = false;
   private $akismetEnabled = false;
-  private $logRoot = '/var/log';
+  private $logRoot = '/var/log/formspam';
   private $logActivity = true;
   private $debug = false;
   private $UA = 'FormSpamCheck class (v.0.0.1)';
@@ -75,23 +75,32 @@ class FormSpamCheck {
     $this->debug = (bool)$setting;
   }
 
-  function FormSpamCheck() {
+  function FormSpamCheck($hpKey = '',$akismetKey = '',$akismetUrl = '') {
     if (!function_exists('curl_init')) {
       print 'curl dependency error';
       return;
     }
    # $this->dbg('Init');
-    if (!empty($GLOBALS['honeyPotApiKey'])) {
+    if (!empty($hpKey)) {
+      $this->honeyPotApiKey = $hpKey;
+      $this->hpCheck = true;
+    } elseif (!empty($GLOBALS['honeyPotApiKey'])) {
       $this->honeyPotApiKey = $GLOBALS['honeyPotApiKey'];
       $this->hpCheck = true;
     }
-    if (!empty($GLOBALS['akismetApiKey'])) {
+    if (!empty($akismetKey)) {
+      $this->akismetApiKey = $akismetKey;
+      $this->akismetEnabled = true;
+    } elseif (!empty($GLOBALS['akismetApiKey'])) {
       $this->akismetApiKey = $GLOBALS['akismetApiKey'];
      # $this->dbg('Set key '.$GLOBALS['akismetApiKey']);
       $this->akismetEnabled = true;
     }
-    if (!empty($GLOBALS['akismetBlogURL'])) {
+    if (!empty($akismetUrl)) {
       $this->akismetBlogURL = $GLOBALS['akismetBlogURL'];
+    } elseif (!empty($GLOBALS['akismetBlogURL'])) {
+      $this->akismetBlogURL = $GLOBALS['akismetBlogURL'];
+      ## @todo verify validity
     }
     if (!empty($GLOBALS['logRoot']) && is_writable($GLOBALS['logRoot'])) {
       $this->logRoot = $GLOBALS['logRoot'];
@@ -111,12 +120,12 @@ class FormSpamCheck {
     }
   }
 
-  function dbg($msg) {
+  private function dbg($msg) {
     if (!$this->debug) return;
     print $msg."\n";
   }
 
-  function addLogEntry($logFile,$entry) {
+  private function addLogEntry($logFile,$entry) {
     if (empty($this->logRoot)) return;
     if (!$this->logActivity) return;
     $logFile = basename($logFile,'.log');
@@ -129,21 +138,21 @@ class FormSpamCheck {
     file_put_contents($this->logRoot.'/'.$logFile.date('Y-m-d').'.log',$logEntry."\n",FILE_APPEND);
   }
 
-  function getCache($key) {
+  private function getCache($key) {
     if (!$this->memCached) return false;
     $val = $this->memCached->get($key);
  #   print "Cache for $key:  $val\n";
     return $val;
   }
 
-  function setCache($key,$val,$expiry = 0) {
+  private function setCache($key,$val,$expiry = 0) {
     if (!$this->memCached) return false;
 #    print "Set cache $key = $val\n";
     if (!$expiry) $expiry = 86400;
     return $this->memCached->set($key,$val,$expiry);
   }
 
-  function defaults($item) {
+  private function defaults($item) {
     switch ($item) {
       case 'ip': return $_SERVER['REMOTE_ADDR'];
       case 'email': return '';
@@ -242,7 +251,7 @@ class FormSpamCheck {
     }
   }
 
-  function doPOST($url,$requestdata = array()) {
+  private function doPOST($url,$requestdata = array()) {
     $date = date('r');
     
     $requestheader = array(
@@ -287,7 +296,7 @@ class FormSpamCheck {
     return $result;
   }
 
-  function doGET($cUrl) {
+  private function doGET($cUrl) {
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $cUrl);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -390,6 +399,17 @@ class FormSpamCheck {
   }
 
   function isSpam($data) {
+    ## for external functionality testing allow "test=ham" or "test=spam"
+    if (isset($data['test'])) {
+      if ($data['test'] == 'ham') {
+        $this->matchedBy = 'HAM test';
+        return false;
+      } elseif ($data['test'] == 'spam') {
+        $this->matchedBy = 'SPAM test';
+        return true;
+      }
+    }
+    
     ## honeypot will be fastest
     if ($this->hpCheck && !empty($data['ips'])) {
       foreach ($data['ips'] as $ip) {
