@@ -42,6 +42,7 @@ $GLOBALS['logRoot']        = '/tmp';       ## Where to write logfiles
 $GLOBALS['memCachedServer'] = 'localhost:11211';
 
 ## An array for triggers on spam elements. This is primarily used for the SFS service
+## it will default to the one below, you can leave it out if you want
 
 $ForumSpamBanTriggers = array (
   'username' => array (               // ban on username
