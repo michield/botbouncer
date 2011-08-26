@@ -104,8 +104,10 @@ class FormSpamCheck {
       $this->akismetEnabled = true;
     }
     if (!empty($akismetUrl)) {
-      $this->akismetBlogURL = $GLOBALS['akismetBlogURL'];
+      $this->dbg('akismet url from par '.$akismetUrl);
+      $this->akismetBlogURL = $akismetUrl;
     } elseif (!empty($GLOBALS['akismetBlogURL'])) {
+      $this->dbg('akismet url from globals '.$GLOBALS['akismetBlogURL']);
       $this->akismetBlogURL = $GLOBALS['akismetBlogURL'];
       ## @todo verify validity
     }
@@ -207,8 +209,11 @@ class FormSpamCheck {
       );
 
       $keyValid = $this->doPOST('http://rest.akismet.com/1.1/verify-key',$request);
+      $this->addLogEntry('akismet.log','KEY CHECK: '.$keyValid.' http://rest.akismet.com/1.1/verify-key'.serialize($request));
       $this->setCache('akismetKeyValid',$keyValid);
     } else {
+      $this->addLogEntry('akismet.log','KEY CHECK (cached) '.$cache);
+      $this->dbg('akismet key (cached) '.$cache);
       $keyValid = $cache;
     }
 
@@ -262,9 +267,11 @@ class FormSpamCheck {
     }
 
     if ( 'true' == $isSpam ) {
+      $this->dbg('akismet check SPAM');
       $this->addLogEntry('akismet.log',$data['fromcache'].' SPAM '.$data['username'].' '.$data['email'].' '.join(',',$data['ips']));
       return true;
     } else {
+      $this->dbg('akismet check HAM');
       $this->addLogEntry('akismet.log',$data['fromcache'].' HAM '.$data['username'].' '.$data['email'].' '.join(',',$data['ips']));
       return false;
     }
@@ -413,14 +420,16 @@ class FormSpamCheck {
     # var_dump($spamMatched);
     $this->matchDetails = $spamMatched;
     if ($isSfsSpam) {
+      $this->dbg('SFS check SPAM');
       $this->addLogEntry('sfs.log',$cached.' SPAM '.$data['username'].' '.$data['email'].' '.join(',',$data['ips']));
     } else {
+      $this->dbg('SFS check HAM');
       $this->addLogEntry('sfs.log',$cached.' HAM '.$data['username'].' '.$data['email'].' '.join(',',$data['ips']));
     }
     return $isSfsSpam;
   }
 
-  function isSpam($data) {
+  function isSpam($data,$checkAll = false) {
     $this->dbg('isSpam call');
     ## for external functionality testing allow "test=ham" or "test=spam"
     if (isset($data['test'])) {
@@ -432,6 +441,7 @@ class FormSpamCheck {
         return true;
       }
     }
+    $isSpam = 0;
     
     ## honeypot will be fastest
     if ($this->doHpCheck && !empty($data['ips'])) {
@@ -439,20 +449,24 @@ class FormSpamCheck {
       foreach ($data['ips'] as $ip) {
         $this->dbg('hpCheck IP '.$ip);
         if ($this->honeypotCheck($ip)) {
+          $this->dbg('hpCheck SPAM');
           $this->matchedBy = 'Honeypot Project';
-          return true;
+          $isSpam++;
         }
       }
     }
-    if ($this->stopForumSpamCheck($data)) {
+    if ((!$isSpam || $checkAll) && $this->stopForumSpamCheck($data)) {
       $this->matchedBy = 'Stop Forum Spam';
-      return true;
+      $this->dbg('SFS SPAM');
+      $isSpam++;
     }
-    if ($this->akismetEnabled && $this->akismetCheck($data)) {
+    if ((!$isSpam || $checkAll) && $this->akismetEnabled && $this->akismetCheck($data)) {
+      $this->dbg('Akismet SPAM');
       $this->matchedBy = 'Akismet';
-      return true;
+      $isSpam++;
     }
-    return false;
+    $this->dbg('overall SpamScore '.sprintf('%d',$isSpam));
+    return $isSpam;
   }
 
 } // eo class
