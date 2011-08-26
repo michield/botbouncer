@@ -30,16 +30,19 @@ class FormSpamCheck {
   private $akismetApiKey = '';
   private $akismetBlogURL = 'http://www.phplist.com';
   private $memCached = false;
-  private $hpCheck = false;
+  private $doHpCheck = false;
   private $akismetEnabled = false;
   private $logRoot = '/var/log/formspam';
   private $logActivity = true;
   private $debug = false;
+  private $debugToLog = true;
   private $UA = 'FormSpamCheck class (v.0.0.1)';
   // The StopFormSpam API URL
   private $stopSpamAPIUrl = 'http://www.stopforumspam.com/api';
   public $matchDetails = '';
   public $matchedBy = '';
+  public $matchedOn = 'unknown';
+  
   private $sfsSpamTriggers = array ( ## set a default, in case it's not in config
     'username' => array ( 
       'ban_end' => FALSE, 
@@ -80,18 +83,22 @@ class FormSpamCheck {
       print 'curl dependency error';
       return;
     }
-   # $this->dbg('Init');
+    $this->dbg('FSC Init');
     if (!empty($hpKey)) {
       $this->honeyPotApiKey = $hpKey;
-      $this->hpCheck = true;
+      $this->dbg('HP key set from par');
+      $this->doHpCheck = true;
     } elseif (!empty($GLOBALS['honeyPotApiKey'])) {
+      $this->dbg('HP key set from globals');
       $this->honeyPotApiKey = $GLOBALS['honeyPotApiKey'];
-      $this->hpCheck = true;
+      $this->doHpCheck = true;
     }
     if (!empty($akismetKey)) {
+      $this->dbg('akismet key set from par');
       $this->akismetApiKey = $akismetKey;
       $this->akismetEnabled = true;
     } elseif (!empty($GLOBALS['akismetApiKey'])) {
+      $this->dbg('akismet key set from globals');
       $this->akismetApiKey = $GLOBALS['akismetApiKey'];
      # $this->dbg('Set key '.$GLOBALS['akismetApiKey']);
       $this->akismetEnabled = true;
@@ -116,11 +123,16 @@ class FormSpamCheck {
         $server = $GLOBALS['memCachedServer'];
         $port = 11211;
       }
+      $this->dbg('memcache: '.$server);
       $this->memCached->addServer($server,$port);
     }
   }
 
   private function dbg($msg) {
+    if ($this->debugToLog) {
+      $this->addLogEntry('fsc-debug.log',$msg);
+    }
+
     if (!$this->debug) return;
     print $msg."\n";
   }
@@ -134,7 +146,7 @@ class FormSpamCheck {
       return;
     }
     $ip = isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : ' - ';
-    $logEntry = date('Y-m-d H:i:s').' '.$ip.' '.$entry;
+    $logEntry = date('Y-m-d H:i:s').' '.$ip.' '.$_SERVER['REQUEST_URI'].' '.$entry;
     file_put_contents($this->logRoot.'/'.$logFile.date('Y-m-d').'.log',$logEntry."\n",FILE_APPEND);
   }
 
@@ -162,7 +174,7 @@ class FormSpamCheck {
   }
 
   function honeypotCheck($ip) {
-     if (!$this->hpCheck) return;
+     if (!$this->doHpCheck) return;
 
     ## honeypot requests will be cached in DNS anyway
     $rev = array_reverse(explode('.', $ip));
@@ -170,6 +182,7 @@ class FormSpamCheck {
 
     $rev = gethostbyname($lookup);
     if ($lookup != $rev) {
+      $this->matchedOn = 'IP';
       $this->addLogEntry('honeypot.log','SPAM '.$lookup.' '.$rev);
       return true;
     } else {
@@ -180,25 +193,30 @@ class FormSpamCheck {
 
   // Authenticates your Akismet API key
   function akismet_verify_key() {
+    $this->dbg('akismet key check');
+
     if (empty($this->akismetApiKey)) {
       $this->dbg('No Akismet API Key');
       return false;
     }
     $cached = $this->getCache('akismetKeyValid');
-    if (!empty($cached)) return $cached;
-    
-    $request = array(
-      'key'=> $this->akismetApiKey,
-      'blog' => $this->akismetBlogURL
-    );
+    if (empty($cached)) {
+      $request = array(
+        'key'=> $this->akismetApiKey,
+        'blog' => $this->akismetBlogURL
+      );
 
-    $keyValid = $this->doPOST('http://rest.akismet.com/1.1/verify-key',$request);
+      $keyValid = $this->doPOST('http://rest.akismet.com/1.1/verify-key',$request);
+      $this->setCache('akismetKeyValid',$keyValid);
+    } else {
+      $keyValid = $cache;
+    }
 
     if ( 'valid' == $keyValid ) {
-      $this->setCache('akismetKeyValid',true);
+      $this->dbg('akismet key valid');
       return true;
     } else {
-      $this->setCache('akismetKeyValid',false);
+      $this->dbg('akismet key not valid');
       return false;
     }
   }
@@ -207,6 +225,7 @@ class FormSpamCheck {
   function akismetCheck($data) {
     if (!$this->akismetEnabled) return false;
     if (!$this->akismet_verify_key()) return false;
+    $this->dbg('akismet check');
 
     ## set some values the way akismet expects them
     $data['user_ip'] = !empty($data['ips'][0]) ? $data['ips'][0]: $this->defaults('ip'); ## akismet only handles one IP, so take the first
@@ -313,6 +332,7 @@ class FormSpamCheck {
     }
     
     $isSfsSpam = false;
+    $this->dbg('SFS check');
 
     $spamTriggers = $this->sfsSpamTriggers;
     if (empty($data['username'])) {
@@ -374,12 +394,14 @@ class FormSpamCheck {
             if (!empty($banDetails['ban_end']) && $resultEntry->lastseen+$banDetails['ban_end'] > time()) {
               $isSfsSpam = true;
               $banDetails['matchedon'] = $trigger;
+              $this->matchedOn = $trigger;
               $banDetails['matchedvalue'] = (string)$resultEntry->value;
               $banDetails['frequency'] = (string)$resultEntry->frequency;
             }
             if ((int)$resultEntry->frequency > $banDetails['freq_tolerance']) {
               $isSfsSpam = true;
               $banDetails['matchedon'] = $trigger;
+              $this->matchedOn = $trigger;
               $banDetails['matchedvalue'] = (string)$resultEntry->value;
               $banDetails['frequency'] = (string)$resultEntry->frequency;
             }
@@ -399,6 +421,7 @@ class FormSpamCheck {
   }
 
   function isSpam($data) {
+    $this->dbg('isSpam call');
     ## for external functionality testing allow "test=ham" or "test=spam"
     if (isset($data['test'])) {
       if ($data['test'] == 'ham') {
@@ -411,8 +434,10 @@ class FormSpamCheck {
     }
     
     ## honeypot will be fastest
-    if ($this->hpCheck && !empty($data['ips'])) {
+    if ($this->doHpCheck && !empty($data['ips'])) {
+      $this->dbg('hpCheck');
       foreach ($data['ips'] as $ip) {
+        $this->dbg('hpCheck IP '.$ip);
         if ($this->honeypotCheck($ip)) {
           $this->matchedBy = 'Honeypot Project';
           return true;
