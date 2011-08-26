@@ -127,6 +127,12 @@ class FormSpamCheck {
       }
       $this->dbg('memcache: '.$server);
       $this->memCached->addServer($server,$port);
+    } else {
+      if (!class_exists('Memcached')) {
+        $this->dbg('memcache not available, PEAR class "Memcached" not found');
+      } else {
+        $this->dbg('memcache not available, config "memCachedServer" not set');
+      }
     }
   }
 
