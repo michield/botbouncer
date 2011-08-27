@@ -186,7 +186,7 @@ class FormSpamCheck {
 
     ## honeypot requests will be cached in DNS anyway
     $rev = array_reverse(explode('.', $ip));
-    $lookup = $GLOBALS['honeyPotApiKey'].'.'.implode('.', $rev) . '.dnsbl.httpbl.org';
+    $lookup = $this->honeyPotApiKey.'.'.implode('.', $rev) . '.dnsbl.httpbl.org';
 
     $rev = gethostbyname($lookup);
     if ($lookup != $rev) {
@@ -456,20 +456,33 @@ class FormSpamCheck {
         $this->dbg('hpCheck IP '.$ip);
         if ($this->honeypotCheck($ip)) {
           $this->dbg('hpCheck SPAM');
+          $this->addLogEntry('munin-graph.log','HPSPAM');
           $this->matchedBy = 'Honeypot Project';
           $isSpam++;
+        } else {
+          $this->addLogEntry('munin-graph.log','HPHAM');
         }
       }
     }
-    if ((!$isSpam || $checkAll) && $this->stopForumSpamCheck($data)) {
-      $this->matchedBy = 'Stop Forum Spam';
-      $this->dbg('SFS SPAM');
-      $isSpam++;
+    if ((!$isSpam || $checkAll)) {
+      if ($this->stopForumSpamCheck($data)) {
+        $this->matchedBy = 'Stop Forum Spam';
+        $this->dbg('SFS SPAM');
+        $this->addLogEntry('munin-graph.log','SFSSPAM');
+        $isSpam++;
+      } else {
+        $this->addLogEntry('munin-graph.log','SFSHAM');
+      }
     }
-    if ((!$isSpam || $checkAll) && $this->akismetEnabled && $this->akismetCheck($data)) {
-      $this->dbg('Akismet SPAM');
-      $this->matchedBy = 'Akismet';
-      $isSpam++;
+    if ((!$isSpam || $checkAll) && $this->akismetEnabled) {
+      if ($this->akismetCheck($data)) {
+        $this->dbg('Akismet SPAM');
+        $this->matchedBy = 'Akismet';
+        $isSpam++;
+        $this->addLogEntry('munin-graph.log','AKISPAM');
+      } else {
+        $this->addLogEntry('munin-graph.log','AKIHAM');
+      }
     }
     $this->dbg('overall SpamScore '.sprintf('%d',$isSpam));
     return $isSpam;
