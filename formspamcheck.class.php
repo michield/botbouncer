@@ -86,28 +86,28 @@ class FormSpamCheck {
     $this->dbg('FSC Init');
     if (!empty($hpKey)) {
       $this->honeyPotApiKey = $hpKey;
-      $this->dbg('HP key set from par');
+#      $this->dbg('HP key set from par');
       $this->doHpCheck = true;
     } elseif (!empty($GLOBALS['honeyPotApiKey'])) {
-      $this->dbg('HP key set from globals');
+#      $this->dbg('HP key set from globals');
       $this->honeyPotApiKey = $GLOBALS['honeyPotApiKey'];
       $this->doHpCheck = true;
     }
     if (!empty($akismetKey)) {
-      $this->dbg('akismet key set from par');
+#      $this->dbg('akismet key set from par');
       $this->akismetApiKey = $akismetKey;
       $this->akismetEnabled = true;
     } elseif (!empty($GLOBALS['akismetApiKey'])) {
-      $this->dbg('akismet key set from globals');
+#      $this->dbg('akismet key set from globals');
       $this->akismetApiKey = $GLOBALS['akismetApiKey'];
      # $this->dbg('Set key '.$GLOBALS['akismetApiKey']);
       $this->akismetEnabled = true;
     }
     if (!empty($akismetUrl)) {
-      $this->dbg('akismet url from par '.$akismetUrl);
+#      $this->dbg('akismet url from par '.$akismetUrl);
       $this->akismetBlogURL = $akismetUrl;
     } elseif (!empty($GLOBALS['akismetBlogURL'])) {
-      $this->dbg('akismet url from globals '.$GLOBALS['akismetBlogURL']);
+#      $this->dbg('akismet url from globals '.$GLOBALS['akismetBlogURL']);
       $this->akismetBlogURL = $GLOBALS['akismetBlogURL'];
       ## @todo verify validity
     }
@@ -129,7 +129,7 @@ class FormSpamCheck {
       $this->memCached->addServer($server,$port);
     } else {
       if (!class_exists('Memcached')) {
-        $this->dbg('memcache not available, PEAR class "Memcached" not found');
+        $this->dbg('memcache not available, class "Memcached" not found');
       } else {
         $this->dbg('memcache not available, config "memCachedServer" not set');
       }
@@ -161,13 +161,11 @@ class FormSpamCheck {
   private function getCache($key) {
     if (!$this->memCached) return false;
     $val = $this->memCached->get($key);
- #   print "Cache for $key:  $val\n";
     return $val;
   }
 
   private function setCache($key,$val,$expiry = 0) {
     if (!$this->memCached) return false;
-#    print "Set cache $key = $val\n";
     if (!$expiry) $expiry = 86400;
     return $this->memCached->set($key,$val,$expiry);
   }
@@ -201,7 +199,7 @@ class FormSpamCheck {
 
   // Authenticates your Akismet API key
   function akismet_verify_key() {
-    $this->dbg('akismet key check');
+#    $this->dbg('akismet key check');
 
     if (empty($this->akismetApiKey)) {
       $this->dbg('No Akismet API Key');
@@ -215,7 +213,7 @@ class FormSpamCheck {
       );
 
       $keyValid = $this->doPOST('http://rest.akismet.com/1.1/verify-key',$request);
-      $this->addLogEntry('akismet.log','KEY CHECK: '.$keyValid.' http://rest.akismet.com/1.1/verify-key'.serialize($request));
+#      $this->addLogEntry('akismet.log','KEY CHECK: '.$keyValid.' http://rest.akismet.com/1.1/verify-key'.serialize($request));
       $this->setCache('akismetKeyValid',$keyValid);
     } else {
       $this->addLogEntry('akismet.log','KEY CHECK (cached) '.$cache);
@@ -399,29 +397,33 @@ class FormSpamCheck {
   #  var_dump($response);exit;
     $spamMatched = array();
     if ($response->success) {
+      $muninEntry = '';
       foreach ($spamTriggers as $trigger => $banDetails) {
         ## iterate over the results found, eg email, ip and username
         foreach ($response->$trigger as $resultEntry) {
           if ($resultEntry->appears) {
          #   var_dump($resultEntry);
-            if (!empty($banDetails['ban_end']) && $resultEntry->lastseen+$banDetails['ban_end'] > time()) {
+            if (
+              (
+              ## there's a ban end check if it's still in range
+              (!empty($banDetails['ban_end']) && $resultEntry->lastseen+$banDetails['ban_end'] > time())
+              ## or the ban is permanent
+              || empty($banDetails['ban_end'])) &&
+              ## check if the frequency is in range
+              ((int)$resultEntry->frequency > $banDetails['freq_tolerance'])
+            ) {
               $isSfsSpam = true;
               $banDetails['matchedon'] = $trigger;
-              $this->matchedOn = $trigger;
+              $this->matchedOn .= $trigger .';';
+              $muninEntry .= 'SFSMATCH '.$trigger;
               $banDetails['matchedvalue'] = (string)$resultEntry->value;
               $banDetails['frequency'] = (string)$resultEntry->frequency;
-            }
-            if ((int)$resultEntry->frequency > $banDetails['freq_tolerance']) {
-              $isSfsSpam = true;
-              $banDetails['matchedon'] = $trigger;
-              $this->matchedOn = $trigger;
-              $banDetails['matchedvalue'] = (string)$resultEntry->value;
-              $banDetails['frequency'] = (string)$resultEntry->frequency;
+              $spamMatched[] = $banDetails;
             }
           }
-          $spamMatched[] = $banDetails;
         }
       }
+      $this->addLogEntry('munin-graph.log',$muninEntry);
     }
     # var_dump($spamMatched);
     $this->matchDetails = $spamMatched;
@@ -437,7 +439,7 @@ class FormSpamCheck {
 
   function isSpam($data,$checkAll = false) {
     $this->dbg('isSpam call');
-    ## for external functionality testing allow "test=ham" or "test=spam"
+    ## for external functionality testing, allow "test=ham" or "test=spam"
     if (isset($data['test'])) {
       if ($data['test'] == 'ham') {
         $this->matchedBy = 'HAM test';
