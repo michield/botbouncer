@@ -41,7 +41,7 @@ class FormSpamCheck {
   private $stopSpamAPIUrl = 'http://www.stopforumspam.com/api';
   public $matchDetails = '';
   public $matchedBy = '';
-  public $matchedOn = 'unknown';
+  public $matchedOn = '';
   
   private $sfsSpamTriggers = array ( ## set a default, in case it's not in config
     'username' => array ( 
@@ -272,6 +272,7 @@ class FormSpamCheck {
 
     if ( 'true' == $isSpam ) {
       $this->dbg('akismet check SPAM');
+      $this->matchedOn = 'unknown';
       $this->addLogEntry('akismet.log',$data['fromcache'].' SPAM '.$data['username'].' '.$data['email'].' '.join(',',$data['ips']));
       return true;
     } else {
