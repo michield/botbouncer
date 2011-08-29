@@ -342,7 +342,7 @@ class FormSpamCheck {
       }
     }
     
-    $isSfsSpam = false;
+    $isSfsSpam = 0;
     $this->dbg('SFS check');
 
     $spamTriggers = $this->sfsSpamTriggers;
@@ -412,10 +412,10 @@ class FormSpamCheck {
               ## check if the frequency is in range
               ((int)$resultEntry->frequency > $banDetails['freq_tolerance'])
             ) {
-              $isSfsSpam = true;
+              $isSfsSpam++;
               $banDetails['matchedon'] = $trigger;
               $this->matchedOn .= $trigger .';';
-              $muninEntry .= 'SFSMATCH '.$trigger;
+              $muninEntry .= ' SFSMATCH '.$trigger;
               $banDetails['matchedvalue'] = (string)$resultEntry->value;
               $banDetails['frequency'] = (string)$resultEntry->frequency;
               $spamMatched[] = $banDetails;
@@ -467,11 +467,12 @@ class FormSpamCheck {
       }
     }
     if ((!$isSpam || $checkAll)) {
-      if ($this->stopForumSpamCheck($data)) {
+      $num = $this->stopForumSpamCheck($data);
+      if ($num) {
         $this->matchedBy = 'Stop Forum Spam';
         $this->dbg('SFS SPAM');
         $this->addLogEntry('munin-graph.log','SFSSPAM');
-        $isSpam++;
+        $isSpam += $num;
       } else {
         $this->addLogEntry('munin-graph.log','SFSHAM');
       }
