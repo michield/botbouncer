@@ -42,6 +42,11 @@ class FormSpamCheck {
   public $matchDetails = '';
   public $matchedBy = '';
   public $matchedOn = '';
+  private $services = array(
+    'SFS' => 'Stop Forum Spam',
+    'HP' => 'Honeypot Project',
+    'AKI' => 'Akismet'
+  );
   
   private $sfsSpamTriggers = array ( ## set a default, in case it's not in config
     'username' => array ( 
@@ -110,7 +115,10 @@ class FormSpamCheck {
 #      $this->dbg('akismet url from globals '.$GLOBALS['akismetBlogURL']);
       $this->akismetBlogURL = $GLOBALS['akismetBlogURL'];
       ## @todo verify validity
+    } elseif (!empty($_SERVER['HTTP_HOST'])) {
+      $this->akismetBlogURL = $_SERVER['HTTP_HOST'];
     }
+    
     if (!empty($GLOBALS['logRoot']) && is_writable($GLOBALS['logRoot'])) {
       $this->logRoot = $GLOBALS['logRoot'];
     }
@@ -235,6 +243,7 @@ class FormSpamCheck {
     if (!$this->akismetEnabled) return false;
     if (!$this->akismet_verify_key()) return false;
     $this->dbg('akismet check');
+    if (!is_array($data['ips'])) $data['ips'] = array();
 
     ## set some values the way akismet expects them
     $data['user_ip'] = !empty($data['ips'][0]) ? $data['ips'][0]: $this->defaults('ip'); ## akismet only handles one IP, so take the first
@@ -451,6 +460,7 @@ class FormSpamCheck {
       }
     }
     $isSpam = 0;
+    $servicesMatched = array();
     
     ## honeypot will be fastest
     if ($this->doHpCheck && !empty($data['ips'])) {
@@ -461,6 +471,7 @@ class FormSpamCheck {
           $this->dbg('hpCheck SPAM');
           $this->addLogEntry('munin-graph.log','HPSPAM');
           $this->matchedBy = 'Honeypot Project';
+          $servicesMatched[] = 'HP';
           $isSpam++;
         } else {
           $this->addLogEntry('munin-graph.log','HPHAM');
@@ -474,6 +485,7 @@ class FormSpamCheck {
         $this->dbg('SFS SPAM');
         $this->addLogEntry('munin-graph.log','SFSSPAM');
         $isSpam += $num;
+        $servicesMatched[] = 'SFS';
       } else {
         $this->addLogEntry('munin-graph.log','SFSHAM');
       }
@@ -482,12 +494,37 @@ class FormSpamCheck {
       if ($this->akismetCheck($data)) {
         $this->dbg('Akismet SPAM');
         $this->matchedBy = 'Akismet';
+        $servicesMatched[] = 'AKI';
         $isSpam++;
         $this->addLogEntry('munin-graph.log','AKISPAM');
       } else {
         $this->addLogEntry('munin-graph.log','AKIHAM');
       }
     }
+
+    ## to test the comparison code below
+/*
+    $isSpam = 1;
+    $servicesMatched = array_keys($this->services);
+*/
+    
+    if ($isSpam) {
+      ## Add a log to graph a comparison: a hit on SVC1 -> hit or miss in SVC2?
+      foreach (array_keys($this->services) as $svcMain) {
+        if (in_array($svcMain,$servicesMatched)) { ## hit on svcMain
+          foreach (array_keys($this->services) as $svcCompare) {
+            if ($svcCompare != $svcMain) { ## no need to compare with ourselves
+              if (in_array($svcCompare,$servicesMatched)) {  ## also a hit on svcCompare
+                $this->addLogEntry('munin-graph-compare.log',$svcMain.' - '.$svcCompare.' HIT ');
+              } else {
+                $this->addLogEntry('munin-graph-compare.log',$svcMain.' - '.$svcCompare.' MISS ');
+              }
+            }
+          }
+        }
+      }
+    }
+
     $this->dbg('overall SpamScore '.sprintf('%d',$isSpam));
     return $isSpam;
   }
