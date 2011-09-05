@@ -1,18 +1,26 @@
 <?php
-/*
- * --------------
+/**
  * FormSpamCheck class
- * Author: Michiel Dethmers, phpList Ltd, http://www.phplist.com
- * Version 0.1 - 24 August 2011
- * License: LGPL (Lesser Gnu Public License) http://www.gnu.org/licenses/lgpl-3.0.html
+ * This class can be used to stop spammers from cluttering your database with bogus signups
+ * posts, comments and whatever else
+ * Currently supported:
+ * 
+ * StopForumSpam: http://www.stopforumspam.com
+ * 
+ * Project Honeypot: http://www.projecthoneypot.org
+ * 
+ * Akismet: http://www.akismet.com
+ *
+ * @author Michiel Dethmers, phpList Ltd, http://www.phplist.com
+ * @version 0.1 - 24 August 2011
+ * @license LGPL (Lesser Gnu Public License) http://www.gnu.org/licenses/lgpl-3.0.html
+ * @package FormSpamCheck
  * Free to use, distribute and modify in Open as well as Closed Source software
  * NO WARRANTY WHATSOEVER!
  * ---------------
  * 
  * For more information and how to set up and configure, http://www.phplist.com/formspamclass 
  *
- * This class can be used to stop spammers from cluttering your database with bogus signups
- * posts, comments and whatever else
  *
  * It currently uses three services, stopforumspam.com, project honeypot and akismet
  * If you know of any other services that can be integrated, let me know.
@@ -23,8 +31,21 @@
  * 
  */
 
+
+/**
+ * FormspamCheck class, centralised spam protection
+ *
+ * Check form submission against multipe spam protection sources
+ *
+ * @example example.php
+ * 
+ * @package FormSpamCheck
+ * @subpackage classes
+ * 
+ */
 class FormSpamCheck {
 
+  /** var LE - line ending */
   private $LE = "\n";
   private $honeyPotApiKey = '';
   private $akismetApiKey = '';
@@ -39,9 +60,30 @@ class FormSpamCheck {
   private $UA = 'FormSpamCheck class (v.0.0.1)';
   // The StopFormSpam API URL
   private $stopSpamAPIUrl = 'http://www.stopforumspam.com/api';
+
+  /**
+   * (array) matchDetails - further details on a match provided by SFS
+   */
+  
   public $matchDetails = '';
+
+  /**
+   * (string) matchedBy - which service returned the match when isSpam returns true
+   */ 
+
   public $matchedBy = '';
+
+  /**
+   * (string) matchedOn - what field was matched when isSpam returns true
+   */ 
+
   public $matchedOn = '';
+
+  /**
+   * (bool) isSpam - flag indicating spam (true) or ham (false) after running any spamcheck
+   */
+  public $isSpam = false;
+
   private $services = array(
     'SFS' => 'Stop Forum Spam',
     'HP' => 'Honeypot Project',
@@ -79,11 +121,23 @@ class FormSpamCheck {
       'comment_content'
   );
 
-  function setDebug($setting) {
+  private function setDebug($setting) {
     $this->debug = (bool)$setting;
   }
 
-  function FormSpamCheck($hpKey = '',$akismetKey = '',$akismetUrl = '') {
+  /**
+   * constructor
+   *
+   * initialise class with services available. There's no need to use all, if any service is not
+   * configured, the check for it will be disabled automatically
+   * 
+   * @param string $hpKey - API key for Honeypot Project
+   * @param string $akismetKey - API key for Akismet service
+   * @param string $akismetUrl - BlogURL for Akismet service
+   *
+   */
+
+  public function __construct($hpKey = '',$akismetKey = '',$akismetUrl = '') {
     if (!function_exists('curl_init')) {
       print 'curl dependency error';
       return;
@@ -126,15 +180,7 @@ class FormSpamCheck {
       $this->spamTriggers = $GLOBALS['ForumSpamBanTriggers'];
     }
     if (class_exists('Memcached') && isset($GLOBALS['memCachedServer'])) {
-      $this->memCached = new Memcached();
-      if (strpos($GLOBALS['memCachedServer'],':') !== FALSE) {
-        list($server,$port) = explode(':',$GLOBALS['memCachedServer']);
-      } else {
-        $server = $GLOBALS['memCachedServer'];
-        $port = 11211;
-      }
-      $this->dbg('memcache: '.$server);
-      $this->memCached->addServer($server,$port);
+      $this->setMemcached($GLOBALS['memCachedServer']);
     } else {
       if (!class_exists('Memcached')) {
         $this->dbg('memcache not available, class "Memcached" not found');
@@ -142,6 +188,47 @@ class FormSpamCheck {
         $this->dbg('memcache not available, config "memCachedServer" not set');
       }
     }
+  }
+
+  /**
+   * setLogRoot - specify where to write logfiles
+   *
+   * @param string $dir - directory where to write to, defaults to /var/log/formspam
+   * @return bool - true is successful
+   */
+
+  public function setLogRoot ($dir) {
+    if (!empty($dir) && is_writable($dir)) {
+      $this->logRoot = $dir;
+      $this->dbg('Logging to '.$dir);
+      return true;
+    } else {
+      $this->dbg('Unable to write logs to '.$dir);
+      return false;
+    }
+  }
+
+  /** setMemcached
+   *
+   * use memCached server for caching
+   *
+   * @param string memCachedServer = server for memcache (use servername:port if port differs from default)
+   * @return bool success
+   */
+
+  public function setMemcached($memCachedServer = '') {
+    if (class_exists('Memcached') && !empty($memCachedServer)) {
+      $this->memCached = new Memcached();
+      if (strpos($memCachedServer,':') !== FALSE) {
+        list($server,$port) = explode(':',$memCachedServer);
+      } else {
+        $server = $memCachedServer;
+        $port = 11211;
+      }
+      $this->dbg('memcache: '.$server);
+      return $this->memCached->addServer($server,$port);
+    }
+    return false;
   }
 
   private function dbg($msg) {
@@ -187,7 +274,15 @@ class FormSpamCheck {
     }
   }
 
-  function honeypotCheck($ip) {
+  /**
+   * honeypotCheck - verify IP using Honeypot project
+   *
+   * @param string $ip - IP address to check
+   * @return bool - true is spam, false is ham
+   *
+   */
+
+  public function honeypotCheck($ip) {
      if (!$this->doHpCheck) return;
 
     ## honeypot requests will be cached in DNS anyway
@@ -198,6 +293,7 @@ class FormSpamCheck {
     if ($lookup != $rev) {
       $this->matchedOn = 'ip';
       $this->addLogEntry('honeypot.log','SPAM '.$lookup.' '.$rev);
+      $this->isSpam = true
       return true;
     } else {
       $this->addLogEntry('honeypot.log','HAM '.$lookup.' '.$rev);
@@ -206,7 +302,7 @@ class FormSpamCheck {
   }
 
   // Authenticates your Akismet API key
-  function akismet_verify_key() {
+  private function akismet_verify_key() {
 #    $this->dbg('akismet key check');
 
     if (empty($this->akismetApiKey)) {
@@ -238,8 +334,17 @@ class FormSpamCheck {
     }
   }
 
-  // Passes back true (it's spam) or false (it's ham)
-  function akismetCheck($data) {
+  /**
+   * akismetCheck - check data against akismet
+   *
+   * @param array $data - associative array with data to use for checking
+   * 
+   * possible keys for data (all optional): blog, user_ip, user_agent, referrer, permalink, comment_type, comment_author, comment_author_email, comment_author_url, comment_content
+   * 
+   * @return bool: true is spam, false is ham
+   */
+
+  public function akismetCheck($data) {
     if (!$this->akismetEnabled) return false;
     if (!$this->akismet_verify_key()) return false;
     $this->dbg('akismet check');
@@ -283,6 +388,7 @@ class FormSpamCheck {
       $this->dbg('akismet check SPAM');
       $this->matchedOn = 'unknown';
       $this->addLogEntry('akismet.log',$data['fromcache'].' SPAM '.$data['username'].' '.$data['email'].' '.join(',',$data['ips']));
+      $this->isSpam = true;
       return true;
     } else {
       $this->dbg('akismet check HAM');
@@ -291,6 +397,9 @@ class FormSpamCheck {
     }
   }
 
+  /**
+   * doPOST - run a POST request to some URL and return the result
+   */
   private function doPOST($url,$requestdata = array()) {
     $date = date('r');
     
@@ -336,6 +445,10 @@ class FormSpamCheck {
     return $result;
   }
 
+  /**
+   * doGET - run a GET request to some URL and return the result
+   */
+
   private function doGET($cUrl) {
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $cUrl);
@@ -344,8 +457,78 @@ class FormSpamCheck {
     return $result;
   }
 
+
+  /** setSFSSpamTriggers - set StopForumSpam triggers, if you want to be more specific on the triggers
+   *
+   * @param array $triggers array with details for SFS triggers
+   *
+   * defaults to:
+   *
+   * array (
+   * 
+   *  'username' => array (               // ban on username
+   * 
+   *    'ban_end' => FALSE,               // Permanent ban
+   * 
+   *    'freq_tolerance' => 2,            // allow when 2 or less in the frequency API field
+   * 
+   *    'ban_reason' => 'Error processing data, please try again', ## let's not make them any wiser
+   * 
+   *   ),
+   * 
+   *  'email' => array (                  // ban on email
+   * 
+   *    'ban_end' => FALSE,               // Permanent ban
+   * 
+   *    'freq_tolerance' => 0,
+   * 
+   *    'ban_reason' => 'Error processing data, please try again', ## let's not make them any wiser
+   * 
+   *  ),
+   * 
+   *  'ip' => array (                     // ban on ip address
+   * 
+   *    'ban_end' => 630000,              // 60*60*24*7 ban for 7 days
+   * 
+   *    'freq_tolerance' => 1,
+   * 
+   *    'ban_reason' => 'Error processing data, please try again', ## let's not make them any wiser
+   * 
+   *  )
+   * 
+   *);
+   * 
+   *
+   * @returns null
+   *
+  */
+
+
+  public function setSFSSpamTriggers($triggers = array()) {
+    if (sizeof($triggers)) {
+      $this->spamTriggers = $triggers;
+    }
+  }
+
+  /**
+   * stopForumSpamCheck - check using the SFS API
+   *
+   * @param array $data - array containing data to check
+   *
+   * needs to contain at least one of
+   *
+   * $data['username'] - (string) username to check
+   *
+   * $data['ips'] - (array) list of IPs to check 
+   *
+   * $data['email'] - (string) email to check
+   *
+   * @return integer - number of times something was matched
+   *
+   */
+
   function stopForumSpamCheck($data = array()) {
-    if (!sizeof($data['ips'])) {
+    if (!sizeof($data['ips']) && isset($_SERVER['REMOTE_ADDR'])) {
       $data['ips'][] = $_SERVER['REMOTE_ADDR'];
       if (isset($_SERVER['HTTP_X_FORWARDED_FOR'])) {
         $data['ips'][] = $_SERVER['HTTP_X_FORWARDED_FOR'];
@@ -444,8 +627,36 @@ class FormSpamCheck {
       $this->dbg('SFS check HAM');
       $this->addLogEntry('sfs.log',$cached.' HAM '.$data['username'].' '.$data['email'].' '.join(',',$data['ips']));
     }
+    $this->isSpam = $this->isSpam || $isSfsSpam > 0;
     return $isSfsSpam;
   }
+
+
+  /**
+   * isSpam - match submission against spam protection sources
+   * @param array $data - array containing information
+   * structure:
+   * 
+   *    $data['email'] = (string) email address
+   * 
+   *    $data['username'] = (string) username
+   * 
+   *    $data['ips'] = array ('ip1','ip2')
+   * 
+   *    $data['user_agent'] = (string) Browser Agent
+   * 
+   *    $data['referrer'] = (string) referring URL
+   * 
+   *    $data['content'] = (string) Other content
+   * 
+   * @param bool $checkAll - continue checking other services
+   * 
+   *  true - check against all services
+   * 
+   *  false - only check next service if previous one returned ham
+   * 
+   * @return integer - number of services that returned "spam" status. If checkAll is false will be 0 or 1
+   */
 
   function isSpam($data,$checkAll = false) {
     $this->dbg('isSpam call');
@@ -526,6 +737,7 @@ class FormSpamCheck {
     }
 
     $this->dbg('overall SpamScore '.sprintf('%d',$isSpam));
+    $this->isSpam = (bool) $isSpam > 0;
     return $isSpam;
   }
 
