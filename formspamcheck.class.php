@@ -293,7 +293,7 @@ class FormSpamCheck {
     if ($lookup != $rev) {
       $this->matchedOn = 'ip';
       $this->addLogEntry('honeypot.log','SPAM '.$lookup.' '.$rev);
-      $this->isSpam = true
+      $this->isSpam = true;
       return true;
     } else {
       $this->addLogEntry('honeypot.log','HAM '.$lookup.' '.$rev);
