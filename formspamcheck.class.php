@@ -196,7 +196,7 @@ class FormSpamCheck {
 
     $rev = gethostbyname($lookup);
     if ($lookup != $rev) {
-      $this->matchedOn = 'IP';
+      $this->matchedOn = 'ip';
       $this->addLogEntry('honeypot.log','SPAM '.$lookup.' '.$rev);
       return true;
     } else {
