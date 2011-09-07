@@ -60,6 +60,7 @@ class FormSpamCheck {
   private $UA = 'FormSpamCheck class (v.0.0.1)';
   // The StopFormSpam API URL
   private $stopSpamAPIUrl = 'http://www.stopforumspam.com/api';
+  private $startTime = 0;
 
   /**
    * (array) matchDetails - further details on a match provided by SFS
@@ -188,6 +189,8 @@ class FormSpamCheck {
         $this->dbg('memcache not available, config "memCachedServer" not set');
       }
     }
+    $now = gettimeofday();
+    $this->startTime = $now['sec'] * 1000000 + $now['usec'];
   }
 
   /**
@@ -238,6 +241,20 @@ class FormSpamCheck {
 
     if (!$this->debug) return;
     print $msg."\n";
+  }
+
+  /**
+   * elapsed
+   *
+   * @param none
+   * @return the number of microseconds used since instantiation
+   */
+
+  public function elapsed() {
+    $now = gettimeofday();
+    $end = $now['sec'] * 1000000 + $now['usec'];
+    $elapsed = $end - $this->startTime;
+    return $elapsed;
   }
 
   private function addLogEntry($logFile,$entry) {
@@ -738,6 +755,7 @@ class FormSpamCheck {
 
     $this->dbg('overall SpamScore '.sprintf('%d',$isSpam));
     $this->isSpam = (bool) $isSpam > 0;
+    $this->addLogEntry('munin-graph-timing.log',$this->elapsed());
     return $isSpam;
   }
 
