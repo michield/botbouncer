@@ -1,8 +1,12 @@
 <?php
 /**
  * FormSpamCheck class
- * This class can be used to stop spammers from cluttering your database with bogus signups
- * posts, comments and whatever else
+ *
+ * The purpose of this class is to have a single interface to multiple anti-form-spam services on the internet.
+ * That way, you can write your application code to check for spam and decide which of the services to use
+ * to actually identify the spam. 
+ * 
+ * 
  * Currently supported:
  * 
  * StopForumSpam: http://www.stopforumspam.com
@@ -11,8 +15,12 @@
  * 
  * Akismet: http://www.akismet.com
  *
+ * Mollom: http://www.mollom.com
+ *
  * @author Michiel Dethmers, phpList Ltd, http://www.phplist.com
- * @version 0.1 - 24 August 2011
+ * @version 0.2 - Sept 8th 2011 - added Mollom support
+ * 
+ * version 0.1 - 24 August 2011
  * @license LGPL (Lesser Gnu Public License) http://www.gnu.org/licenses/lgpl-3.0.html
  * @package FormSpamCheck
  * Free to use, distribute and modify in Open as well as Closed Source software
@@ -61,6 +69,8 @@ class FormSpamCheck {
   // The StopFormSpam API URL
   private $stopSpamAPIUrl = 'http://www.stopforumspam.com/api';
   private $startTime = 0;
+  private $mollomCheck = '';
+  private $mollomEnabled = false;
 
   /**
    * (array) matchDetails - further details on a match provided by SFS
@@ -88,7 +98,8 @@ class FormSpamCheck {
   private $services = array(
     'SFS' => 'Stop Forum Spam',
     'HP' => 'Honeypot Project',
-    'AKI' => 'Akismet'
+    'AKI' => 'Akismet',
+    'MOL' => 'Mollom',
   );
   
   private $sfsSpamTriggers = array ( ## set a default, in case it's not in config
@@ -122,8 +133,9 @@ class FormSpamCheck {
       'comment_content'
   );
 
-  private function setDebug($setting) {
+  public function setDebug($setting) {
     $this->debug = (bool)$setting;
+    $this->debugToLog = (bool) $setting;
   }
 
   /**
@@ -138,7 +150,7 @@ class FormSpamCheck {
    *
    */
 
-  public function __construct($hpKey = '',$akismetKey = '',$akismetUrl = '') {
+  public function __construct($hpKey = '',$akismetKey = '',$akismetUrl = '', $mollomPrivateKey = '',$mollomPublicKey = '') {
     if (!function_exists('curl_init')) {
       print 'curl dependency error';
       return;
@@ -146,28 +158,21 @@ class FormSpamCheck {
     $this->dbg('FSC Init');
     if (!empty($hpKey)) {
       $this->honeyPotApiKey = $hpKey;
-#      $this->dbg('HP key set from par');
       $this->doHpCheck = true;
     } elseif (!empty($GLOBALS['honeyPotApiKey'])) {
-#      $this->dbg('HP key set from globals');
       $this->honeyPotApiKey = $GLOBALS['honeyPotApiKey'];
       $this->doHpCheck = true;
     }
     if (!empty($akismetKey)) {
-#      $this->dbg('akismet key set from par');
       $this->akismetApiKey = $akismetKey;
       $this->akismetEnabled = true;
     } elseif (!empty($GLOBALS['akismetApiKey'])) {
-#      $this->dbg('akismet key set from globals');
       $this->akismetApiKey = $GLOBALS['akismetApiKey'];
-     # $this->dbg('Set key '.$GLOBALS['akismetApiKey']);
       $this->akismetEnabled = true;
     }
     if (!empty($akismetUrl)) {
-#      $this->dbg('akismet url from par '.$akismetUrl);
       $this->akismetBlogURL = $akismetUrl;
     } elseif (!empty($GLOBALS['akismetBlogURL'])) {
-#      $this->dbg('akismet url from globals '.$GLOBALS['akismetBlogURL']);
       $this->akismetBlogURL = $GLOBALS['akismetBlogURL'];
       ## @todo verify validity
     } elseif (!empty($_SERVER['HTTP_HOST'])) {
@@ -180,15 +185,55 @@ class FormSpamCheck {
     if (isset($GLOBALS['ForumSpamBanTriggers'])) {
       $this->spamTriggers = $GLOBALS['ForumSpamBanTriggers'];
     }
-    if (class_exists('Memcached') && isset($GLOBALS['memCachedServer'])) {
+
+    if (isset($GLOBALS['memCachedServer']) && class_exists('Memcached', false)) {
       $this->setMemcached($GLOBALS['memCachedServer']);
     } else {
-      if (!class_exists('Memcached')) {
+      if (!class_exists('Memcached',false)) {
         $this->dbg('memcache not available, class "Memcached" not found');
       } else {
         $this->dbg('memcache not available, config "memCachedServer" not set');
       }
     }
+
+    if (is_file(dirname(__FILE__).'/mollom.php') && !empty($mollomPrivateKey) && !empty($mollomPublicKey)) {
+      $this->dbg('loading mollom');
+      @include dirname(__FILE__).'/mollom.php';
+      if (class_exists('Mollom',false)) {
+        $this->mollomCheck = new Mollom();
+        $this->dbg('mollom instantiated');
+        try {
+          $this->mollomCheck->setPrivateKey($mollomPrivateKey);
+          $this->mollomCheck->setPublicKey($mollomPublicKey);
+          $serverList = $this->getCache('mollomServerList');
+          if (empty($serverList)) {
+            $serverList = $this->mollomCheck->getServerList();
+            $this->setCache('mollomServerList',$serverList);
+          } else {
+            $this->mollomCheck->setServerList($serverList);
+          }
+          $validKey = $this->getCache('mollomKeyValid');
+          if ($validKey == 'YES') {
+            $this->mollomEnabled = true;
+          } else {
+            if ($this->mollomCheck->verifyKey()) {
+              $this->mollomEnabled = true;
+              $this->setCache('mollomKeyValid','YES');
+            } else {
+              $this->setCache('mollomKeyValid','NO');
+            }
+          }
+        } catch (Exception $e) {
+          $this->dbg('Mollon exception: '.$e->getMessage());
+          $this->mollomEnabled = false;
+        }
+      } else {
+        $this->dbg('mollom class not found');
+      }
+    } else {
+      $this->dbg('mollom not enabled');
+    }
+    
     $now = gettimeofday();
     $this->startTime = $now['sec'] * 1000000 + $now['usec'];
   }
@@ -244,9 +289,8 @@ class FormSpamCheck {
   }
 
   /**
-   * elapsed
+   * elapsed, a simple timer to monitor speed
    *
-   * @param none
    * @return the number of microseconds used since instantiation
    */
 
@@ -266,13 +310,18 @@ class FormSpamCheck {
       return;
     }
     $ip = isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : ' - ';
-    $logEntry = date('Y-m-d H:i:s').' '.$ip.' '.$_SERVER['REQUEST_URI'].' '.$entry;
+    if (isset($_SERVER['REQUEST_URI'])) {
+      $logEntry = date('Y-m-d H:i:s').' '.$ip.' '.$_SERVER['REQUEST_URI'].' '.$entry;
+    } else {
+      $logEntry = date('Y-m-d H:i:s').' '.$ip.' - '.$entry;
+    }
     file_put_contents($this->logRoot.'/'.$logFile.date('Y-m-d').'.log',$logEntry."\n",FILE_APPEND);
   }
 
   private function getCache($key) {
     if (!$this->memCached) return false;
     $val = $this->memCached->get($key);
+    $this->dbg('CACHE: '.$key .' = '.$val);
     return $val;
   }
 
@@ -289,6 +338,13 @@ class FormSpamCheck {
       case 'username': return 'Anonymous';
       default: return '';
     }
+  }
+
+  private function setDefaults($data) {
+    if (!isset($data['url'])) $data['url'] = '';
+    if (!isset($data['content'])) $data['content'] = '';
+    if (!isset($data['ips']) || !is_array($data['ips'])) $data['ips'] = array($this->defaults('ip'));
+    return $data;
   }
 
   /**
@@ -337,9 +393,9 @@ class FormSpamCheck {
 #      $this->addLogEntry('akismet.log','KEY CHECK: '.$keyValid.' http://rest.akismet.com/1.1/verify-key'.serialize($request));
       $this->setCache('akismetKeyValid',$keyValid);
     } else {
-      $this->addLogEntry('akismet.log','KEY CHECK (cached) '.$cache);
-      $this->dbg('akismet key (cached) '.$cache);
-      $keyValid = $cache;
+      $this->addLogEntry('akismet.log','KEY CHECK (cached) '.$cached);
+      $this->dbg('akismet key (cached) '.$cached);
+      $keyValid = $cached;
     }
 
     if ( 'valid' == $keyValid ) {
@@ -347,6 +403,58 @@ class FormSpamCheck {
       return true;
     } else {
       $this->dbg('akismet key not valid');
+      return false;
+    }
+  }
+
+
+  /**
+   * mollomCheck - check data against mollom
+   *
+   * @param array $data - associative array with data to use for checking
+   * 
+   * @return bool: true is spam, false is ham
+   */
+
+  public function mollomCheck($data) {
+    if (!$this->mollomEnabled) return false;
+    $this->dbg('mollom check');
+    $data = $this->setDefaults($data);
+    $cached = $this->getCache('mollom'.md5(serialize($data)));
+    if (!empty($cached)) {
+      $isSpam = $cached;
+      $data['fromcache'] = '(cached)'; // for logging
+    } else {
+      try {
+        $isSpam = $this->mollomCheck->checkContent(
+          '', # sessionID
+          '', # $postTitle
+          $data['content'], # $postBody 
+          $data['username'], # $authorName
+          $data['url'], # $authorUrl
+          $data['email'], # authorEmail
+          '', # $authorOpenId
+          '', # $authorId
+          $data['ips'] ## added to mollom.php class for commandline processing
+        );
+        $this->setCache('mollom'.md5(serialize($data)),$isSpam);
+        $data['fromcache'] = '';
+      } catch (Exception $e) {
+        $this->dbg('Exception thrown '.$e->getMessage());
+        $isSpam = array('spam'=> 'exception');
+      }
+    }
+
+    if ($isSpam['spam'] == 'spam') {
+      $this->dbg('mollom check SPAM');
+      $this->matchedOn = 'unknown';
+      $this->addLogEntry('mollom.log',$data['fromcache'].' SPAM '.$data['username'].' '.$data['email'].' '.join(',',$data['ips']));
+      $this->isSpam = true;
+      return true;
+    } else {
+      ## mollom has state "unsure" as well, but let's just take that as HAM for now
+      $this->dbg('mollom check HAM');
+      $this->addLogEntry('mollom.log',$data['fromcache'].' HAM '.$data['username'].' '.$data['email'].' '.join(',',$data['ips']));
       return false;
     }
   }
@@ -577,10 +685,10 @@ class FormSpamCheck {
       if (!empty($banDetails['value'])) {
         if (is_array($banDetails['value'])) {
           foreach ($banDetails['value'] as $v) {
-            $apiRequest .= $trigger.'[]='.$v.'&';
+            $apiRequest .= $trigger.'[]='.urlencode($v).'&';
           }
         } else {
-          $apiRequest .= $trigger.'[]='.$banDetails['value'].'&';
+          $apiRequest .= $trigger.'[]='.urlencode($banDetails['value']).'&';
         }
       }
     }
@@ -633,12 +741,12 @@ class FormSpamCheck {
           }
         }
       }
-      $this->addLogEntry('munin-graph.log',$muninEntry);
     }
     # var_dump($spamMatched);
     $this->matchDetails = $spamMatched;
     if ($isSfsSpam) {
       $this->dbg('SFS check SPAM');
+      $this->addLogEntry('munin-graph.log',$muninEntry);
       $this->addLogEntry('sfs.log',$cached.' SPAM '.$data['username'].' '.$data['email'].' '.join(',',$data['ips']));
     } else {
       $this->dbg('SFS check HAM');
@@ -693,17 +801,21 @@ class FormSpamCheck {
     ## honeypot will be fastest
     if ($this->doHpCheck && !empty($data['ips'])) {
       $this->dbg('hpCheck');
+      $isHP = false;
       foreach ($data['ips'] as $ip) {
         $this->dbg('hpCheck IP '.$ip);
         if ($this->honeypotCheck($ip)) {
           $this->dbg('hpCheck SPAM');
-          $this->addLogEntry('munin-graph.log','HPSPAM');
+          $isHP = true;
           $this->matchedBy = 'Honeypot Project';
           $servicesMatched[] = 'HP';
           $isSpam++;
-        } else {
-          $this->addLogEntry('munin-graph.log','HPHAM');
         }
+      }
+      if ($isHP) { ## make sure to only log once, if multiple IPs are checked
+        $this->addLogEntry('munin-graph.log','HPSPAM');
+      } else {
+        $this->addLogEntry('munin-graph.log','HPHAM');
       }
     }
     if ((!$isSpam || $checkAll)) {
@@ -727,6 +839,18 @@ class FormSpamCheck {
         $this->addLogEntry('munin-graph.log','AKISPAM');
       } else {
         $this->addLogEntry('munin-graph.log','AKIHAM');
+      }
+    }
+
+    if ((!$isSpam || $checkAll) && $this->mollomEnabled) {
+      if ($this->mollomCheck($data)) {
+        $this->dbg('Mollom SPAM');
+        $this->matchedBy = 'Mollom';
+        $servicesMatched[] = 'MOL';
+        $isSpam++;
+        $this->addLogEntry('munin-graph.log','MOLSPAM');
+      } else {
+        $this->addLogEntry('munin-graph.log','MOLHAM');
       }
     }
 
@@ -755,6 +879,9 @@ class FormSpamCheck {
 
     $this->dbg('overall SpamScore '.sprintf('%d',$isSpam));
     $this->isSpam = (bool) $isSpam > 0;
+    if ($this->isSpam) {
+      $this->addLogEntry('munin-graph.log','TOTAL LEVEL '.$isSpam);
+    }
     $this->addLogEntry('munin-graph-timing.log',$this->elapsed());
     return $isSpam;
   }
