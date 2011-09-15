@@ -15,10 +15,12 @@
 <li><div class="src-line"><span class="src-var">$honeypotApiKey&nbsp;</span>=&nbsp;<span class="src-str">'My&nbsp;API&nbsp;key&nbsp;for&nbsp;Honeypot&nbsp;Project'</span><span class="src-sym">;</span></div></li>
 <li><div class="src-line"><span class="src-var">$akismetApiKey&nbsp;&nbsp;</span>=&nbsp;<span class="src-str">'My&nbsp;API&nbsp;key&nbsp;for&nbsp;Akismet'</span><span class="src-sym">;</span></div></li>
 <li><div class="src-line"><span class="src-var">$akismetBlogURL&nbsp;</span>=&nbsp;<span class="src-str">'http://www.example.com'</span><span class="src-sym">;</span></div></li>
+<li><div class="src-line"><span class="src-var">$mollomPublicKey&nbsp;</span>=&nbsp;<span class="src-str">'mollomPubKey'</span><span class="src-sym">;</span></div></li>
+<li><div class="src-line"><span class="src-var">$mollomPrivateKey&nbsp;</span>=&nbsp;<span class="src-str">'mollomPrivKey'</span><span class="src-sym">;</span></div></li>
 <li><div class="src-line">&nbsp;</div></li>
 <li><div class="src-line"><span class="src-inc">include&nbsp;</span><span class="src-str">'formspamcheck.class.php'</span><span class="src-sym">;</span></div></li>
 <li><div class="src-line">&nbsp;</div></li>
-<li><div class="src-line"><span class="src-var">$fsc&nbsp;</span>=&nbsp;<span class="src-key">new&nbsp;</span><span class="src-id"><a href="../FormSpamCheck/classes/FormSpamCheck.html">FormSpamCheck</a></span><span class="src-sym">(</span><span class="src-var">$honeypotApiKey</span><span class="src-sym">,</span><span class="src-var">$akismetApiKey</span><span class="src-sym">,</span><span class="src-var">$akismetBlogURL</span><span class="src-sym">)</span><span class="src-sym">;</span></div></li>
+<li><div class="src-line"><span class="src-var">$fsc&nbsp;</span>=&nbsp;<span class="src-key">new&nbsp;</span><span class="src-id"><a href="../FormSpamCheck/classes/FormSpamCheck.html">FormSpamCheck</a></span><span class="src-sym">(</span><span class="src-var">$honeypotApiKey</span><span class="src-sym">,</span><span class="src-var">$akismetApiKey</span><span class="src-sym">,</span><span class="src-var">$akismetBlogURL</span><span class="src-sym">,</span><span class="src-var">$mollomPrivateKey</span><span class="src-sym">,</span><span class="src-var">$mollomPublicKey</span><span class="src-sym">)</span><span class="src-sym">;</span></div></li>
 <li><div class="src-line"><span class="src-key">if&nbsp;</span><span class="src-sym">(</span><span class="src-var">$fsc</span><span class="src-sym">-&gt;</span><a href="../FormSpamCheck/classes/FormSpamCheck.html#methodisSpam">isSpam</a><span class="src-sym">(</span></div></li>
 <li><div class="src-line">&nbsp;&nbsp;<span class="src-key">array</span><span class="src-sym">(</span></div></li>
 <li><div class="src-line">&nbsp;&nbsp;&nbsp;&nbsp;<span class="src-str">'username'&nbsp;</span>=&gt;&nbsp;<span class="src-str">'someusername'</span><span class="src-sym">,</span></div></li>
@@ -32,7 +34,7 @@
 </ol></div>
 </div>
 	<p class="notes" id="credit">
-		Documentation generated on Mon, 05 Sep 2011 14:16:40 -0300 by <a href="http://www.phpdoc.org" target="_blank">phpDocumentor 1.4.3</a>
+		Documentation generated on Wed, 14 Sep 2011 13:21:47 -0300 by <a href="http://www.phpdoc.org" target="_blank">phpDocumentor 1.4.3</a>
 	</p>
 	</body>
 </html>
