@@ -306,7 +306,7 @@ class FormSpamCheck {
     if (!$this->logActivity) return;
     $logFile = basename($logFile,'.log');
     if (!is_writable($this->logRoot)) {
-      $this->dbg('cannot write logfile '.$this->logRoot.'/'.$logFile.date('Y-m-d').'.log');
+     # $this->dbg('cannot write logfile '.$this->logRoot.'/'.$logFile.date('Y-m-d').'.log');
       return;
     }
     $ip = isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : ' - ';
