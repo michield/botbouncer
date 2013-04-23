@@ -6,9 +6,9 @@ $akismetBlogURL = 'http://www.example.com';
 $mollomPublicKey = 'mollomPubKey';
 $mollomPrivateKey = 'mollomPrivKey';
 
-include 'formspamcheck.class.php';
+include 'botbouncer.php';
 
-$fsc = new FormSpamCheck($honeypotApiKey,$akismetApiKey,$akismetBlogURL,$mollomPrivateKey,$mollomPublicKey);
+$fsc = new Botbouncer($honeypotApiKey,$akismetApiKey,$akismetBlogURL,$mollomPrivateKey,$mollomPublicKey);
 if ($fsc->isSpam(
   array(
     'username' => 'someusername',

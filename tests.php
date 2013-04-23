@@ -3,7 +3,7 @@
 ## some tests on the formspamcheck class
 
 @include 'config.php';
-require 'formspamcheck.class.php';
+require 'botbouncer.php';
 
 ## fetch some obvious spam from eg http://programmermeetdesigner.com/blog/view/techstars_ceo__project_posting_and_the_pmd_difference_/#comments
 
@@ -37,7 +37,7 @@ $minimalham = array (
 );
 
 
-$fsc = new FormSpamCheck();
+$fsc = new Botbouncer();
 $fsc->setDebug(false);
 print "SFS\n";
 if ($fsc->stopForumSpamCheck($spam)) {
