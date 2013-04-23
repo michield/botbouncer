@@ -1,8 +1,8 @@
 <?php
 /**
- * FormSpamCheck class
+ * Botbouncer class
  *
- * The purpose of this class is to have a single interface to multiple anti-form-spam services on the internet.
+ * The purpose of this class is to have a single interface to multiple anti-comment-spam services on the internet.
  * That way, you can write your application code to check for spam and decide which of the services to use
  * to actually identify the spam. 
  * 
@@ -18,17 +18,17 @@
  * Mollom: http://www.mollom.com
  *
  * @author Michiel Dethmers, phpList Ltd, http://www.phplist.com
+ * @version 0.3 - Apr 23, 2013 - renamed Botbouncer (from FormspamCheck.class)
  * @version 0.2 - Sept 8th 2011 - added Mollom support
  * 
  * version 0.1 - 24 August 2011
  * @license LGPL (Lesser Gnu Public License) http://www.gnu.org/licenses/lgpl-3.0.html
- * @package FormSpamCheck
+ * @package Botbouncer
  * Free to use, distribute and modify in Open as well as Closed Source software
  * NO WARRANTY WHATSOEVER!
  * ---------------
  * 
- * For more information and how to set up and configure, http://www.phplist.com/formspamclass 
- *
+ * For more information and how to set up and configure, http://www.botbouncer.org/
  *
  * It currently uses three services, stopforumspam.com, project honeypot and akismet
  * If you know of any other services that can be integrated, let me know.
@@ -41,31 +41,31 @@
 
 
 /**
- * FormspamCheck class, centralised spam protection
+ * Botbouncer class, centralised spam protection
  *
  * Check form submission against multipe spam protection sources
  *
  * @example example.php
  * 
- * @package FormSpamCheck
+ * @package Botbouncer
  * @subpackage classes
  * 
  */
-class FormSpamCheck {
+class Botbouncer {
 
   /** var LE - line ending */
   private $LE = "\n";
   private $honeyPotApiKey = '';
   private $akismetApiKey = '';
-  private $akismetBlogURL = 'http://www.phplist.com';
+  private $akismetBlogURL = 'http://www.yoursite.com';
   private $memCached = false;
   private $doHpCheck = false;
   private $akismetEnabled = false;
-  private $logRoot = '/var/log/formspam';
+  private $logRoot = '/var/log/botbouncer';
   private $logActivity = true;
   private $debug = false;
   private $debugToLog = true;
-  private $UA = 'FormSpamCheck class (v.0.0.1)';
+  private $UA = 'Botbouncer (v.0.3)';
   // The StopFormSpam API URL
   private $stopSpamAPIUrl = 'http://www.stopforumspam.com/api';
   private $startTime = 0;
@@ -241,7 +241,7 @@ class FormSpamCheck {
   /**
    * setLogRoot - specify where to write logfiles
    *
-   * @param string $dir - directory where to write to, defaults to /var/log/formspam
+   * @param string $dir - directory where to write to, defaults to /var/log/botbouncer
    * @return bool - true is successful
    */
 
@@ -492,7 +492,7 @@ class FormSpamCheck {
           case 'permalink': $data['permalink'] = '';break;
           case 'comment_type': $data['comment_type'] = 'comment';break;
           case 'comment_author': $data['comment_author'] = 'Admin';break;
-          case 'comment_author_email': $data['comment_author_email'] = 'formspamcheck@gmail.com';break;
+          case 'comment_author_email': $data['comment_author_email'] = 'botbouncer@gmail.com';break;
           case 'comment_author_url': $data['comment_author_url'] = '';break;
           case 'comment_content': $data['comment_content'] = '';break;
         }
