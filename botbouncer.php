@@ -67,7 +67,7 @@ class Botbouncer {
   private $debugToLog = true;
   private $UA = 'Botbouncer (v.0.3)';
   // The StopFormSpam API URL
-  private $stopSpamAPIUrl = 'http://www.stopforumspam.com/api';
+  private $stopSpamAPIUrl = 'http://api.stopforumspam.org/api';
   private $startTime = 0;
   private $mollomCheck = '';
   private $mollomEnabled = false;
@@ -306,7 +306,6 @@ class Botbouncer {
     if (!$this->logActivity) return;
     $logFile = basename($logFile,'.log');
     if (!is_writable($this->logRoot)) {
-     # $this->dbg('cannot write logfile '.$this->logRoot.'/'.$logFile.date('Y-m-d').'.log');
       return;
     }
     $ip = isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : ' - ';
