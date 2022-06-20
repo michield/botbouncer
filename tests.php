@@ -17,7 +17,7 @@ $spam = array (
 );
 
 $ham = array (
-  'ips' => array('77.240.14.92'),
+  'ips' => array('132.67.70.2'),
   'user_agent' => 'Mozilla/5.0 (Windows; U; Windows NT 6.0; en-US; rv:1.9.2.20) Gecko/20110803 Firefox/3.6.20',
   'referrer' => 'http://wordpress.com',
   'username' => 'HelloWorld',
@@ -31,7 +31,7 @@ I think this story helps illustrate the difference between PMD and all of the ot
 );
 
 $minimalham = array (
-  'ips' => array('77.240.14.92'),
+  'ips' => array('132.67.70.2'),
   'username' => 'HelloWorld',
   'email' => 'phplist@gmail.com',
 );
@@ -39,7 +39,7 @@ $minimalham = array (
 
 $fsc = new Botbouncer();
 $fsc->setDebug(false);
-print "SFS\n";
+print "SFS:\n";
 if ($fsc->stopForumSpamCheck($spam)) {
   print "SPAM\n";
 } else {
@@ -53,8 +53,9 @@ if ($fsc->stopForumSpamCheck($minimalham)) {
   print "HAM\n";
 }
 #var_dump($fsc->matchDetails);
+print "\n";
 
-print 'Akismet'."\n";
+print 'Akismet:'."\n";
 if ($fsc->akismetCheck($spam)) {
   print "SPAM\n";
 } else {
@@ -65,7 +66,9 @@ if ($fsc->akismetCheck($minimalham)) {
 } else {
   print "HAM\n";
 }
-print 'Honeypot'."\n";
+print "\n";
+
+print 'Honeypot:'."\n";
 if ($fsc->honeypotcheck($spam['ips'][0])) {
   print "SPAM\n";
 } else {
@@ -76,16 +79,31 @@ if ($fsc->honeypotcheck($minimalham['ips'][0])) {
 } else {
   print "HAM\n";
 }
-print 'Generic'."\n";
-if ($fsc->isSpam($spam)) {
+print "\n";
+
+print 'IP Intel:'."\n";
+if ($fsc->ipIntelCheck($spam['ips'][1])) {
   print "SPAM\n";
+} else {
+  print "HAM\n";
+}
+if ($fsc->ipIntelCheck($minimalham['ips'][0])) {
+  print "SPAM\n";
+} else {
+  print "HAM\n";
+}
+print "\n";
+
+print 'Generic:'."\n";
+if ($fsc->isSpam($spam)) {
+  print "SPAM:  ";
   print $fsc->matchedBy."\n";
 } else {
   print "HAM\n";
 }
 
 if ($fsc->isSpam($minimalham)) {
-  print "SPAM\n";
+  print "SPAM:  ";
   print $fsc->matchedBy."\n";
 } else {
   print "HAM\n";

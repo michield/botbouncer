@@ -25,6 +25,7 @@ For now, it supports:
 * http://www.stopforumspam.com - the Stop Forum Spam service
 * http://www.projecthoneypot.org/ - The Honeypot Project
 * http://www.akismet.com - The comment spam service from Wordpress
+* https://getipintel.net/ - IP Intel
 
 
 ************ Configuration **************
@@ -36,6 +37,8 @@ $GLOBALS['honeyPotApiKey'] = 'abcdefghij'; ## Your Key from the Honeypot Project
 $GLOBALS['akismetApiKey']  = 'abcdefghij'; ## Your Key from the Akismet Service
 $GLOBALS['akismetBlogURL'] = 'http://yoursite.com'; ## Your website URL
 $GLOBALS['logRoot']        = '/tmp';       ## Where to write logfiles
+$GLOBALS['ipIntelContact'] = 'you@example.com';	## Your e-mail (enables IP Intel)
+$GLOBALS['sfsEnabled'] = true;  ## Set false to disable Stop Forum Spam check (defaults to true (enabled))
 
 ## to avoid overloading the API services, use a memcached service
 ## calls will be cached for a day
